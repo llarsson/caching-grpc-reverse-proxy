@@ -15,6 +15,7 @@ import (
 	"strings"
 	"strconv"
 	"errors"
+	"os"
 )
 
 var (
@@ -126,6 +127,13 @@ func (p *productCatalogProxy) SearchProducts(ctx context.Context, req *pb.Search
 }
 
 func main() {
+	var err error
+	*productCatalogUpstream = os.Getenv("PRODUCT_CATALOG_SERVICE_ADDR")
+	*port, err = strconv.Atoi(os.Getenv("PROXY_LISTEN_PORT"))
+	if err != nil {
+		log.Fatalf("PROXY_LISTEN_PORT cannot be parsed as integer")
+	}
+
 	flag.Parse()
 
 	servicePrefixes = make(map[string]string)
