@@ -25,19 +25,10 @@ var (
 )
 
 type productCatalogProxy struct {
-	fallback pb.UnimplementedProductCatalogServiceServer
 	client pb.ProductCatalogServiceClient
 }
 
 func (p *productCatalogProxy) ListProducts(ctx context.Context, req *pb.Empty) (*pb.ListProductsResponse, error) {
-	// keeping this around for future reference, if it would ever be needed
-	//md, _ := metadata.FromIncomingContext(ctx)
-
-	//	outMd := md.Copy()
-	//
-	//	outCtx, _ := context.WithCancel(ctx)
-	//	outCtx = metadata.NewOutgoingContext(outCtx, outMd)
-
 	hash := hashcode.Strings([]string{"ListProducts", req.String()})
 
 	if value, found := responseCache.Get(hash); found {
@@ -79,21 +70,59 @@ func cacheExpiration(cacheHeaders []string) (int, error) {
 }
 
 func (p *productCatalogProxy) GetProduct(ctx context.Context, req *pb.GetProductRequest) (*pb.Product, error) {
-	response, err := p.client.GetProduct(context.Background(), req)
-	if err != nil {
-		log.Printf("Failed to call upstream GetProduct")
-		return nil, err
+	hash := hashcode.Strings([]string{"GetProduct", req.String()})
+
+	if value, found := responseCache.Get(hash); found {
+		cachedResponse := value.(*pb.Product)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to GetProduct(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.client.GetProduct(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream GetProduct")
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			responseCache.Set(hash, response, time.Duration(expiration) * time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to GetProduct(%s)", req)
+		return response, nil
 	}
-	return response, err
 }
 
 func (p *productCatalogProxy) SearchProducts(ctx context.Context, req *pb.SearchProductsRequest) (*pb.SearchProductsResponse, error) {
-	response, err := p.client.SearchProducts(context.Background(), req)
-	if err != nil {
-		log.Printf("Failed to call upstream SearchProduct")
-		return nil, err
+	hash := hashcode.Strings([]string{"SearchProducts", req.String()})
+
+	if value, found := responseCache.Get(hash); found {
+		cachedResponse := value.(*pb.SearchProductsResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to SearchProducts(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.client.SearchProducts(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream SearchProducts")
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			responseCache.Set(hash, response, time.Duration(expiration) * time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to SearchProducts(%s)", req)
+		return response, nil
 	}
-	return response, err
 }
 
 func main() {
