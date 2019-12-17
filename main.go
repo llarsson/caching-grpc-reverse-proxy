@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"strings"
 	"time"
+	"go.opencensus.io/trace"
 )
 
 var (
@@ -30,6 +31,9 @@ type productCatalogProxy struct {
 }
 
 func (p *productCatalogProxy) ListProducts(ctx context.Context, req *pb.Empty) (*pb.ListProductsResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "com.github.llarsson.caching-grpc-reverse-proxy.productcatalogservice.listproducts")
+	defer span.End()
+
 	hash := hashcode.Strings([]string{"ListProducts", req.String()})
 
 	if value, found := responseCache.Get(hash); found {
@@ -42,6 +46,7 @@ func (p *productCatalogProxy) ListProducts(ctx context.Context, req *pb.Empty) (
 		response, err := p.client.ListProducts(ctx, req, grpc.Header(&header))
 		if err != nil {
 			log.Printf("Failed to call upstream ListProducts")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
 			return nil, err
 		}
 
@@ -71,6 +76,9 @@ func cacheExpiration(cacheHeaders []string) (int, error) {
 }
 
 func (p *productCatalogProxy) GetProduct(ctx context.Context, req *pb.GetProductRequest) (*pb.Product, error) {
+	ctx, span := trace.StartSpan(ctx, "com.github.llarsson.caching-grpc-reverse-proxy.productcatalogservice.getproduct")
+	defer span.End()
+
 	hash := hashcode.Strings([]string{"GetProduct", req.String()})
 
 	if value, found := responseCache.Get(hash); found {
@@ -83,6 +91,7 @@ func (p *productCatalogProxy) GetProduct(ctx context.Context, req *pb.GetProduct
 		response, err := p.client.GetProduct(ctx, req, grpc.Header(&header))
 		if err != nil {
 			log.Printf("Failed to call upstream GetProduct")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
 			return nil, err
 		}
 
@@ -99,6 +108,9 @@ func (p *productCatalogProxy) GetProduct(ctx context.Context, req *pb.GetProduct
 }
 
 func (p *productCatalogProxy) SearchProducts(ctx context.Context, req *pb.SearchProductsRequest) (*pb.SearchProductsResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "com.github.llarsson.caching-grpc-reverse-proxy.productcatalogservice.getproduct")
+	defer span.End()
+
 	hash := hashcode.Strings([]string{"SearchProducts", req.String()})
 
 	if value, found := responseCache.Get(hash); found {
@@ -111,6 +123,7 @@ func (p *productCatalogProxy) SearchProducts(ctx context.Context, req *pb.Search
 		response, err := p.client.SearchProducts(ctx, req, grpc.Header(&header))
 		if err != nil {
 			log.Printf("Failed to call upstream SearchProducts")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
 			return nil, err
 		}
 
