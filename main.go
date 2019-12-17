@@ -1,28 +1,28 @@
 package main
 
 import (
-	"fmt"
-	"flag"
-	"log"
 	"context"
-	"net"
-	"google.golang.org/grpc"
-	pb "github.com/llarsson/caching-grpc-reverse-proxy/hipstershop"
-	"google.golang.org/grpc/metadata"
-	"github.com/patrickmn/go-cache"
-	"time"
-	"github.com/hashicorp/terraform/helper/hashcode"
-	"strings"
-	"strconv"
 	"errors"
+	"flag"
+	"fmt"
+	"github.com/hashicorp/terraform/helper/hashcode"
+	pb "github.com/llarsson/caching-grpc-reverse-proxy/hipstershop"
+	"github.com/patrickmn/go-cache"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
+	"log"
+	"net"
 	"os"
+	"strconv"
+	"strings"
+	"time"
 )
 
 var (
-	port = flag.Int("port", 1234, "Port to listen to")
+	port                   = flag.Int("port", 1234, "Port to listen to")
 	productCatalogUpstream = flag.String("productCatalogUpstream", "productcatalogservice:3550", "Host:port address of the Product Catalog Service")
-	servicePrefixes map[string]string
-	responseCache *cache.Cache
+	servicePrefixes        map[string]string
+	responseCache          *cache.Cache
 )
 
 type productCatalogProxy struct {
@@ -47,7 +47,7 @@ func (p *productCatalogProxy) ListProducts(ctx context.Context, req *pb.Empty) (
 
 		expiration, err := cacheExpiration(header.Get("cache-control"))
 		if expiration > 0 {
-			responseCache.Set(hash, response, time.Duration(expiration) * time.Second)
+			responseCache.Set(hash, response, time.Duration(expiration)*time.Second)
 			log.Printf("Storing response for %d seconds", expiration)
 		}
 
@@ -88,7 +88,7 @@ func (p *productCatalogProxy) GetProduct(ctx context.Context, req *pb.GetProduct
 
 		expiration, err := cacheExpiration(header.Get("cache-control"))
 		if expiration > 0 {
-			responseCache.Set(hash, response, time.Duration(expiration) * time.Second)
+			responseCache.Set(hash, response, time.Duration(expiration)*time.Second)
 			log.Printf("Storing response for %d seconds", expiration)
 		}
 
@@ -116,7 +116,7 @@ func (p *productCatalogProxy) SearchProducts(ctx context.Context, req *pb.Search
 
 		expiration, err := cacheExpiration(header.Get("cache-control"))
 		if expiration > 0 {
-			responseCache.Set(hash, response, time.Duration(expiration) * time.Second)
+			responseCache.Set(hash, response, time.Duration(expiration)*time.Second)
 			log.Printf("Storing response for %d seconds", expiration)
 		}
 
@@ -139,7 +139,7 @@ func main() {
 	servicePrefixes = make(map[string]string)
 	servicePrefixes["/hipstershop.ProductCatalogService/"] = *productCatalogUpstream
 
-	responseCache = cache.New(10 * time.Second, 60 * time.Second)
+	responseCache = cache.New(10*time.Second, 60*time.Second)
 
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
 	if err != nil {
