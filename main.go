@@ -8,6 +8,9 @@ import (
 	"github.com/hashicorp/terraform/helper/hashcode"
 	pb "github.com/llarsson/caching-grpc-reverse-proxy/hipstershop"
 	"github.com/patrickmn/go-cache"
+	"go.opencensus.io/plugin/ocgrpc"
+	"go.opencensus.io/stats/view"
+	"go.opencensus.io/trace"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"log"
@@ -16,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	"go.opencensus.io/trace"
 )
 
 var (
@@ -158,9 +160,17 @@ func main() {
 	if err != nil {
 		log.Fatalf("failed to listen: %v", err)
 	}
-	grpcServer := grpc.NewServer()
 
-	productCatalogUpstreamConn, err := grpc.Dial(*productCatalogUpstream, grpc.WithInsecure())
+	if err := view.Register(ocgrpc.DefaultServerViews...); err != nil {
+		log.Fatalf("Failed to register ocgrpc server views: %v", err)
+	}
+
+	if err := view.Register(ocgrpc.DefaultClientViews...); err != nil {
+		log.Fatalf("Failed to register ocgrpc client views: %v", err)
+	}
+
+	grpcServer := grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}))
+	productCatalogUpstreamConn, err := grpc.Dial(*productCatalogUpstream, grpc.WithInsecure(), grpc.WithStatsHandler(new(ocgrpc.ClientHandler)))
 	if err != nil {
 		log.Fatalf("Cannot connect to upstream %s : %v", *productCatalogUpstream, err)
 	}
