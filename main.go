@@ -89,8 +89,8 @@ func main() {
 			}
 		case shippingServiceAddrKey:
 			{
-				proxy := pb.RecommendationServiceCachingProxy{Client: pb.NewRecommendationServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
-				pb.RegisterRecommendationServiceServer(grpcServer, &proxy)
+				proxy := pb.ShippingServiceCachingProxy{Client: pb.NewShippingServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				pb.RegisterShippingServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Shipping Service calls to %s", upstreamAddr)
 			}
 		case checkoutServiceAddrKey:
