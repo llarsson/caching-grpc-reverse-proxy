@@ -7,10 +7,18 @@ import (
 	context "context"
 	fmt "fmt"
 	proto "github.com/golang/protobuf/proto"
+	hashcode "github.com/hashicorp/terraform/helper/hashcode"
+	go_cache "github.com/patrickmn/go-cache"
+	trace "go.opencensus.io/trace"
 	grpc "google.golang.org/grpc"
 	codes "google.golang.org/grpc/codes"
+	metadata "google.golang.org/grpc/metadata"
 	status "google.golang.org/grpc/status"
+	log "log"
 	math "math"
+	strconv "strconv"
+	strings "strings"
+	time "time"
 )
 
 // Reference imports to suppress errors if they are not otherwise used.
@@ -1753,6 +1761,106 @@ func (*UnimplementedCartServiceServer) EmptyCart(ctx context.Context, req *Empty
 	return nil, status.Errorf(codes.Unimplemented, "method EmptyCart not implemented")
 }
 
+// CartServiceCachingProxy creates a caching proxy for the service.
+type CartServiceCachingProxy struct {
+	Client CartServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *CartServiceCachingProxy) AddItem(ctx context.Context, req *AddItemRequest) (*Empty, error) {
+	ctx, span := trace.StartSpan(ctx, "CartServiceCachingProxy.AddItem")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"CartService.AddItem", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*Empty)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to CartService.AddItem(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.AddItem(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream CartService.AddItem")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to CartService.AddItem(%s)", req)
+		return response, nil
+	}
+}
+func (p *CartServiceCachingProxy) GetCart(ctx context.Context, req *GetCartRequest) (*Cart, error) {
+	ctx, span := trace.StartSpan(ctx, "CartServiceCachingProxy.GetCart")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"CartService.GetCart", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*Cart)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to CartService.GetCart(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.GetCart(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream CartService.GetCart")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to CartService.GetCart(%s)", req)
+		return response, nil
+	}
+}
+func (p *CartServiceCachingProxy) EmptyCart(ctx context.Context, req *EmptyCartRequest) (*Empty, error) {
+	ctx, span := trace.StartSpan(ctx, "CartServiceCachingProxy.EmptyCart")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"CartService.EmptyCart", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*Empty)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to CartService.EmptyCart(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.EmptyCart(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream CartService.EmptyCart")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to CartService.EmptyCart(%s)", req)
+		return response, nil
+	}
+}
+
 func RegisterCartServiceServer(s *grpc.Server, srv CartServiceServer) {
 	s.RegisterService(&_CartService_serviceDesc, srv)
 }
@@ -1869,6 +1977,44 @@ func (*UnimplementedRecommendationServiceServer) ListRecommendations(ctx context
 	return nil, status.Errorf(codes.Unimplemented, "method ListRecommendations not implemented")
 }
 
+// RecommendationServiceCachingProxy creates a caching proxy for the service.
+type RecommendationServiceCachingProxy struct {
+	Client RecommendationServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *RecommendationServiceCachingProxy) ListRecommendations(ctx context.Context, req *ListRecommendationsRequest) (*ListRecommendationsResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "RecommendationServiceCachingProxy.ListRecommendations")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"RecommendationService.ListRecommendations", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*ListRecommendationsResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to RecommendationService.ListRecommendations(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.ListRecommendations(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream RecommendationService.ListRecommendations")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to RecommendationService.ListRecommendations(%s)", req)
+		return response, nil
+	}
+}
+
 func RegisterRecommendationServiceServer(s *grpc.Server, srv RecommendationServiceServer) {
 	s.RegisterService(&_RecommendationService_serviceDesc, srv)
 }
@@ -1967,6 +2113,106 @@ func (*UnimplementedProductCatalogServiceServer) GetProduct(ctx context.Context,
 }
 func (*UnimplementedProductCatalogServiceServer) SearchProducts(ctx context.Context, req *SearchProductsRequest) (*SearchProductsResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SearchProducts not implemented")
+}
+
+// ProductCatalogServiceCachingProxy creates a caching proxy for the service.
+type ProductCatalogServiceCachingProxy struct {
+	Client ProductCatalogServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *ProductCatalogServiceCachingProxy) ListProducts(ctx context.Context, req *Empty) (*ListProductsResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ProductCatalogServiceCachingProxy.ListProducts")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"ProductCatalogService.ListProducts", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*ListProductsResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to ProductCatalogService.ListProducts(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.ListProducts(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream ProductCatalogService.ListProducts")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to ProductCatalogService.ListProducts(%s)", req)
+		return response, nil
+	}
+}
+func (p *ProductCatalogServiceCachingProxy) GetProduct(ctx context.Context, req *GetProductRequest) (*Product, error) {
+	ctx, span := trace.StartSpan(ctx, "ProductCatalogServiceCachingProxy.GetProduct")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"ProductCatalogService.GetProduct", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*Product)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to ProductCatalogService.GetProduct(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.GetProduct(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream ProductCatalogService.GetProduct")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to ProductCatalogService.GetProduct(%s)", req)
+		return response, nil
+	}
+}
+func (p *ProductCatalogServiceCachingProxy) SearchProducts(ctx context.Context, req *SearchProductsRequest) (*SearchProductsResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ProductCatalogServiceCachingProxy.SearchProducts")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"ProductCatalogService.SearchProducts", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*SearchProductsResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to ProductCatalogService.SearchProducts(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.SearchProducts(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream ProductCatalogService.SearchProducts")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to ProductCatalogService.SearchProducts(%s)", req)
+		return response, nil
+	}
 }
 
 func RegisterProductCatalogServiceServer(s *grpc.Server, srv ProductCatalogServiceServer) {
@@ -2099,6 +2345,75 @@ func (*UnimplementedShippingServiceServer) ShipOrder(ctx context.Context, req *S
 	return nil, status.Errorf(codes.Unimplemented, "method ShipOrder not implemented")
 }
 
+// ShippingServiceCachingProxy creates a caching proxy for the service.
+type ShippingServiceCachingProxy struct {
+	Client ShippingServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *ShippingServiceCachingProxy) GetQuote(ctx context.Context, req *GetQuoteRequest) (*GetQuoteResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ShippingServiceCachingProxy.GetQuote")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"ShippingService.GetQuote", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*GetQuoteResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to ShippingService.GetQuote(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.GetQuote(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream ShippingService.GetQuote")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to ShippingService.GetQuote(%s)", req)
+		return response, nil
+	}
+}
+func (p *ShippingServiceCachingProxy) ShipOrder(ctx context.Context, req *ShipOrderRequest) (*ShipOrderResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ShippingServiceCachingProxy.ShipOrder")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"ShippingService.ShipOrder", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*ShipOrderResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to ShippingService.ShipOrder(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.ShipOrder(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream ShippingService.ShipOrder")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to ShippingService.ShipOrder(%s)", req)
+		return response, nil
+	}
+}
+
 func RegisterShippingServiceServer(s *grpc.Server, srv ShippingServiceServer) {
 	s.RegisterService(&_ShippingService_serviceDesc, srv)
 }
@@ -2207,6 +2522,75 @@ func (*UnimplementedCurrencyServiceServer) Convert(ctx context.Context, req *Cur
 	return nil, status.Errorf(codes.Unimplemented, "method Convert not implemented")
 }
 
+// CurrencyServiceCachingProxy creates a caching proxy for the service.
+type CurrencyServiceCachingProxy struct {
+	Client CurrencyServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *CurrencyServiceCachingProxy) GetSupportedCurrencies(ctx context.Context, req *Empty) (*GetSupportedCurrenciesResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "CurrencyServiceCachingProxy.GetSupportedCurrencies")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"CurrencyService.GetSupportedCurrencies", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*GetSupportedCurrenciesResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to CurrencyService.GetSupportedCurrencies(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.GetSupportedCurrencies(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream CurrencyService.GetSupportedCurrencies")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to CurrencyService.GetSupportedCurrencies(%s)", req)
+		return response, nil
+	}
+}
+func (p *CurrencyServiceCachingProxy) Convert(ctx context.Context, req *CurrencyConversionRequest) (*Money, error) {
+	ctx, span := trace.StartSpan(ctx, "CurrencyServiceCachingProxy.Convert")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"CurrencyService.Convert", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*Money)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to CurrencyService.Convert(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.Convert(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream CurrencyService.Convert")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to CurrencyService.Convert(%s)", req)
+		return response, nil
+	}
+}
+
 func RegisterCurrencyServiceServer(s *grpc.Server, srv CurrencyServiceServer) {
 	s.RegisterService(&_CurrencyService_serviceDesc, srv)
 }
@@ -2301,6 +2685,44 @@ func (*UnimplementedPaymentServiceServer) Charge(ctx context.Context, req *Charg
 	return nil, status.Errorf(codes.Unimplemented, "method Charge not implemented")
 }
 
+// PaymentServiceCachingProxy creates a caching proxy for the service.
+type PaymentServiceCachingProxy struct {
+	Client PaymentServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *PaymentServiceCachingProxy) Charge(ctx context.Context, req *ChargeRequest) (*ChargeResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "PaymentServiceCachingProxy.Charge")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"PaymentService.Charge", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*ChargeResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to PaymentService.Charge(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.Charge(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream PaymentService.Charge")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to PaymentService.Charge(%s)", req)
+		return response, nil
+	}
+}
+
 func RegisterPaymentServiceServer(s *grpc.Server, srv PaymentServiceServer) {
 	s.RegisterService(&_PaymentService_serviceDesc, srv)
 }
@@ -2371,6 +2793,44 @@ type UnimplementedEmailServiceServer struct {
 
 func (*UnimplementedEmailServiceServer) SendOrderConfirmation(ctx context.Context, req *SendOrderConfirmationRequest) (*Empty, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendOrderConfirmation not implemented")
+}
+
+// EmailServiceCachingProxy creates a caching proxy for the service.
+type EmailServiceCachingProxy struct {
+	Client EmailServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *EmailServiceCachingProxy) SendOrderConfirmation(ctx context.Context, req *SendOrderConfirmationRequest) (*Empty, error) {
+	ctx, span := trace.StartSpan(ctx, "EmailServiceCachingProxy.SendOrderConfirmation")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"EmailService.SendOrderConfirmation", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*Empty)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to EmailService.SendOrderConfirmation(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.SendOrderConfirmation(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream EmailService.SendOrderConfirmation")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to EmailService.SendOrderConfirmation(%s)", req)
+		return response, nil
+	}
 }
 
 func RegisterEmailServiceServer(s *grpc.Server, srv EmailServiceServer) {
@@ -2445,6 +2905,44 @@ func (*UnimplementedCheckoutServiceServer) PlaceOrder(ctx context.Context, req *
 	return nil, status.Errorf(codes.Unimplemented, "method PlaceOrder not implemented")
 }
 
+// CheckoutServiceCachingProxy creates a caching proxy for the service.
+type CheckoutServiceCachingProxy struct {
+	Client CheckoutServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *CheckoutServiceCachingProxy) PlaceOrder(ctx context.Context, req *PlaceOrderRequest) (*PlaceOrderResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "CheckoutServiceCachingProxy.PlaceOrder")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"CheckoutService.PlaceOrder", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*PlaceOrderResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to CheckoutService.PlaceOrder(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.PlaceOrder(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream CheckoutService.PlaceOrder")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to CheckoutService.PlaceOrder(%s)", req)
+		return response, nil
+	}
+}
+
 func RegisterCheckoutServiceServer(s *grpc.Server, srv CheckoutServiceServer) {
 	s.RegisterService(&_CheckoutService_serviceDesc, srv)
 }
@@ -2517,6 +3015,44 @@ func (*UnimplementedAdServiceServer) GetAds(ctx context.Context, req *AdRequest)
 	return nil, status.Errorf(codes.Unimplemented, "method GetAds not implemented")
 }
 
+// AdServiceCachingProxy creates a caching proxy for the service.
+type AdServiceCachingProxy struct {
+	Client AdServiceClient
+	Cache  go_cache.Cache
+}
+
+func (p *AdServiceCachingProxy) GetAds(ctx context.Context, req *AdRequest) (*AdResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "AdServiceCachingProxy.GetAds")
+	defer span.End()
+
+	hash := hashcode.Strings([]string{"AdService.GetAds", req.String()})
+
+	if value, found := p.Cache.Get(hash); found {
+		cachedResponse := value.(*AdResponse)
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+		log.Printf("Using cached response for call to AdService.GetAds(%s)", req)
+		return cachedResponse, nil
+	} else {
+		var header metadata.MD
+		response, err := p.Client.GetAds(ctx, req, grpc.Header(&header))
+		if err != nil {
+			log.Printf("Failed to call upstream AdService.GetAds")
+			span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+			return nil, err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			p.Cache.Set(hash, response, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to AdService.GetAds(%s)", req)
+		return response, nil
+	}
+}
+
 func RegisterAdServiceServer(s *grpc.Server, srv AdServiceServer) {
 	s.RegisterService(&_AdService_serviceDesc, srv)
 }
@@ -2550,4 +3086,17 @@ var _AdService_serviceDesc = grpc.ServiceDesc{
 	},
 	Streams:  []grpc.StreamDesc{},
 	Metadata: "demo.proto",
+}
+
+func cacheExpiration(cacheHeaders []string) (int, error) {
+	for _, header := range cacheHeaders {
+		for _, value := range strings.Split(header, ",") {
+			value = strings.Trim(value, " ")
+			if strings.HasPrefix(value, "max-age") {
+				duration := strings.Split(value, "max-age=")[1]
+				return strconv.Atoi(duration)
+			}
+		}
+	}
+	return -1, status.Errorf(codes.Internal, "No cache expiration set for the given object")
 }
