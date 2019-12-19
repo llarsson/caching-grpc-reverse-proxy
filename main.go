@@ -23,6 +23,8 @@ const (
 	shippingServiceAddrKey       = "SHIPPING_SERVICE_ADDR"
 	checkoutServiceAddrKey       = "CHECKOUT_SERVICE_ADDR"
 	adServiceAddrKey             = "AD_SERVICE_ADDR"
+	paymentSerivceAddrKey        = "PAYMENT_SERVICE_ADDR"
+	emailServiceAddrKey          = "EMAIL_SERVICE_ADDR"
 )
 
 func main() {
@@ -48,7 +50,7 @@ func main() {
 
 	serviceAddrKeys := []string{productCatalogServiceAddrKey, currencyServiceAddrKey,
 		cartServiceAddrKey, recommendationServiceAddrKey, shippingServiceAddrKey,
-		checkoutServiceAddrKey, adServiceAddrKey}
+		checkoutServiceAddrKey, adServiceAddrKey, paymentSerivceAddrKey, emailServiceAddrKey}
 
 	for _, serviceAddrKey := range serviceAddrKeys {
 		upstreamAddr, ok := os.LookupEnv(serviceAddrKey)
@@ -104,6 +106,18 @@ func main() {
 				proxy := pb.AdServiceCachingProxy{Client: pb.NewAdServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
 				pb.RegisterAdServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Ad Service calls to %s", upstreamAddr)
+			}
+		case paymentSerivceAddrKey:
+			{
+				proxy := pb.PaymentServiceCachingProxy{Client: pb.NewPaymentServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				pb.RegisterPaymentServiceServer(grpcServer, &proxy)
+				log.Printf("Proxying Payment Service calls to %s", upstreamAddr)
+			}
+		case emailServiceAddrKey:
+			{
+				proxy := pb.EmailServiceCachingProxy{Client: pb.NewEmailServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				pb.RegisterEmailServiceServer(grpcServer, &proxy)
+				log.Printf("Proxying Email Service calls to %s", upstreamAddr)
 			}
 		default:
 			{
