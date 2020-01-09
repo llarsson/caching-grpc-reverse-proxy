@@ -1861,6 +1861,50 @@ func (p *CartServiceCachingProxy) EmptyCart(ctx context.Context, req *EmptyCartR
 	}
 }
 
+// CartServiceProxy creates a proxy for the
+type CartServiceProxy struct {
+	Client CartServiceClient
+}
+
+func (p *CartServiceProxy) AddItem(ctx context.Context, req *AddItemRequest) (*Empty, error) {
+	ctx, span := trace.StartSpan(ctx, "CartServiceProxy.AddItem")
+	defer span.End()
+	response, err := p.Client.AddItem(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream CartService.AddItem")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
+func (p *CartServiceProxy) GetCart(ctx context.Context, req *GetCartRequest) (*Cart, error) {
+	ctx, span := trace.StartSpan(ctx, "CartServiceProxy.GetCart")
+	defer span.End()
+	response, err := p.Client.GetCart(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream CartService.GetCart")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
+func (p *CartServiceProxy) EmptyCart(ctx context.Context, req *EmptyCartRequest) (*Empty, error) {
+	ctx, span := trace.StartSpan(ctx, "CartServiceProxy.EmptyCart")
+	defer span.End()
+	response, err := p.Client.EmptyCart(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream CartService.EmptyCart")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
 func RegisterCartServiceServer(s *grpc.Server, srv CartServiceServer) {
 	s.RegisterService(&_CartService_serviceDesc, srv)
 }
@@ -2013,6 +2057,24 @@ func (p *RecommendationServiceCachingProxy) ListRecommendations(ctx context.Cont
 		log.Printf("Fetched upstream response for call to RecommendationService.ListRecommendations(%s)", req)
 		return response, nil
 	}
+}
+
+// RecommendationServiceProxy creates a proxy for the
+type RecommendationServiceProxy struct {
+	Client RecommendationServiceClient
+}
+
+func (p *RecommendationServiceProxy) ListRecommendations(ctx context.Context, req *ListRecommendationsRequest) (*ListRecommendationsResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "RecommendationServiceProxy.ListRecommendations")
+	defer span.End()
+	response, err := p.Client.ListRecommendations(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream RecommendationService.ListRecommendations")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
 }
 
 func RegisterRecommendationServiceServer(s *grpc.Server, srv RecommendationServiceServer) {
@@ -2215,6 +2277,50 @@ func (p *ProductCatalogServiceCachingProxy) SearchProducts(ctx context.Context, 
 	}
 }
 
+// ProductCatalogServiceProxy creates a proxy for the
+type ProductCatalogServiceProxy struct {
+	Client ProductCatalogServiceClient
+}
+
+func (p *ProductCatalogServiceProxy) ListProducts(ctx context.Context, req *Empty) (*ListProductsResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ProductCatalogServiceProxy.ListProducts")
+	defer span.End()
+	response, err := p.Client.ListProducts(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream ProductCatalogService.ListProducts")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
+func (p *ProductCatalogServiceProxy) GetProduct(ctx context.Context, req *GetProductRequest) (*Product, error) {
+	ctx, span := trace.StartSpan(ctx, "ProductCatalogServiceProxy.GetProduct")
+	defer span.End()
+	response, err := p.Client.GetProduct(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream ProductCatalogService.GetProduct")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
+func (p *ProductCatalogServiceProxy) SearchProducts(ctx context.Context, req *SearchProductsRequest) (*SearchProductsResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ProductCatalogServiceProxy.SearchProducts")
+	defer span.End()
+	response, err := p.Client.SearchProducts(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream ProductCatalogService.SearchProducts")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
 func RegisterProductCatalogServiceServer(s *grpc.Server, srv ProductCatalogServiceServer) {
 	s.RegisterService(&_ProductCatalogService_serviceDesc, srv)
 }
@@ -2414,6 +2520,37 @@ func (p *ShippingServiceCachingProxy) ShipOrder(ctx context.Context, req *ShipOr
 	}
 }
 
+// ShippingServiceProxy creates a proxy for the
+type ShippingServiceProxy struct {
+	Client ShippingServiceClient
+}
+
+func (p *ShippingServiceProxy) GetQuote(ctx context.Context, req *GetQuoteRequest) (*GetQuoteResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ShippingServiceProxy.GetQuote")
+	defer span.End()
+	response, err := p.Client.GetQuote(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream ShippingService.GetQuote")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
+func (p *ShippingServiceProxy) ShipOrder(ctx context.Context, req *ShipOrderRequest) (*ShipOrderResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "ShippingServiceProxy.ShipOrder")
+	defer span.End()
+	response, err := p.Client.ShipOrder(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream ShippingService.ShipOrder")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
 func RegisterShippingServiceServer(s *grpc.Server, srv ShippingServiceServer) {
 	s.RegisterService(&_ShippingService_serviceDesc, srv)
 }
@@ -2591,6 +2728,37 @@ func (p *CurrencyServiceCachingProxy) Convert(ctx context.Context, req *Currency
 	}
 }
 
+// CurrencyServiceProxy creates a proxy for the
+type CurrencyServiceProxy struct {
+	Client CurrencyServiceClient
+}
+
+func (p *CurrencyServiceProxy) GetSupportedCurrencies(ctx context.Context, req *Empty) (*GetSupportedCurrenciesResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "CurrencyServiceProxy.GetSupportedCurrencies")
+	defer span.End()
+	response, err := p.Client.GetSupportedCurrencies(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream CurrencyService.GetSupportedCurrencies")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
+func (p *CurrencyServiceProxy) Convert(ctx context.Context, req *CurrencyConversionRequest) (*Money, error) {
+	ctx, span := trace.StartSpan(ctx, "CurrencyServiceProxy.Convert")
+	defer span.End()
+	response, err := p.Client.Convert(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream CurrencyService.Convert")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
 func RegisterCurrencyServiceServer(s *grpc.Server, srv CurrencyServiceServer) {
 	s.RegisterService(&_CurrencyService_serviceDesc, srv)
 }
@@ -2723,6 +2891,24 @@ func (p *PaymentServiceCachingProxy) Charge(ctx context.Context, req *ChargeRequ
 	}
 }
 
+// PaymentServiceProxy creates a proxy for the
+type PaymentServiceProxy struct {
+	Client PaymentServiceClient
+}
+
+func (p *PaymentServiceProxy) Charge(ctx context.Context, req *ChargeRequest) (*ChargeResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "PaymentServiceProxy.Charge")
+	defer span.End()
+	response, err := p.Client.Charge(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream PaymentService.Charge")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
 func RegisterPaymentServiceServer(s *grpc.Server, srv PaymentServiceServer) {
 	s.RegisterService(&_PaymentService_serviceDesc, srv)
 }
@@ -2831,6 +3017,24 @@ func (p *EmailServiceCachingProxy) SendOrderConfirmation(ctx context.Context, re
 		log.Printf("Fetched upstream response for call to EmailService.SendOrderConfirmation(%s)", req)
 		return response, nil
 	}
+}
+
+// EmailServiceProxy creates a proxy for the
+type EmailServiceProxy struct {
+	Client EmailServiceClient
+}
+
+func (p *EmailServiceProxy) SendOrderConfirmation(ctx context.Context, req *SendOrderConfirmationRequest) (*Empty, error) {
+	ctx, span := trace.StartSpan(ctx, "EmailServiceProxy.SendOrderConfirmation")
+	defer span.End()
+	response, err := p.Client.SendOrderConfirmation(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream EmailService.SendOrderConfirmation")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
 }
 
 func RegisterEmailServiceServer(s *grpc.Server, srv EmailServiceServer) {
@@ -2943,6 +3147,24 @@ func (p *CheckoutServiceCachingProxy) PlaceOrder(ctx context.Context, req *Place
 	}
 }
 
+// CheckoutServiceProxy creates a proxy for the
+type CheckoutServiceProxy struct {
+	Client CheckoutServiceClient
+}
+
+func (p *CheckoutServiceProxy) PlaceOrder(ctx context.Context, req *PlaceOrderRequest) (*PlaceOrderResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "CheckoutServiceProxy.PlaceOrder")
+	defer span.End()
+	response, err := p.Client.PlaceOrder(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream CheckoutService.PlaceOrder")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
+}
+
 func RegisterCheckoutServiceServer(s *grpc.Server, srv CheckoutServiceServer) {
 	s.RegisterService(&_CheckoutService_serviceDesc, srv)
 }
@@ -3051,6 +3273,24 @@ func (p *AdServiceCachingProxy) GetAds(ctx context.Context, req *AdRequest) (*Ad
 		log.Printf("Fetched upstream response for call to AdService.GetAds(%s)", req)
 		return response, nil
 	}
+}
+
+// AdServiceProxy creates a proxy for the
+type AdServiceProxy struct {
+	Client AdServiceClient
+}
+
+func (p *AdServiceProxy) GetAds(ctx context.Context, req *AdRequest) (*AdResponse, error) {
+	ctx, span := trace.StartSpan(ctx, "AdServiceProxy.GetAds")
+	defer span.End()
+	response, err := p.Client.GetAds(ctx, req)
+	if err != nil {
+		log.Printf("Failed to call upstream AdService.GetAds")
+		span.SetStatus(trace.Status{Code: trace.StatusCodeInternal, Message: err.Error()})
+		return nil, err
+	}
+
+	return response, nil
 }
 
 func RegisterAdServiceServer(s *grpc.Server, srv AdServiceServer) {

@@ -1,18 +1,25 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
+	"github.com/hashicorp/terraform/helper/hashcode"
 	pb "github.com/llarsson/caching-grpc-reverse-proxy/hipstershop"
+	"github.com/llarsson/protobuf/proto"
 	"github.com/patrickmn/go-cache"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats/view"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 const (
@@ -26,6 +33,78 @@ const (
 	paymentSerivceAddrKey        = "PAYMENT_SERVICE_ADDR"
 	emailServiceAddrKey          = "EMAIL_SERVICE_ADDR"
 )
+
+// A CachingInterceptor will intercept
+type CachingInterceptor interface {
+	CreateUnaryServerInterceptor() grpc.UnaryServerInterceptor
+	CreateUnaryClientInterceptor() grpc.UnaryClientInterceptor
+}
+
+// InmemoryCachingInterceptor is the
+type InmemoryCachingInterceptor struct {
+	Cache cache.Cache
+}
+
+// CreateUnaryServerInterceptor creates the actual grpc.UnaryClientInterceptor
+func (interceptor *InmemoryCachingInterceptor) CreateUnaryServerInterceptor() grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+		reqMessage := req.(proto.Message)
+		hash := hashcode.Strings([]string{info.FullMethod, reqMessage.String()})
+
+		if value, found := interceptor.Cache.Get(hash); found {
+			grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
+			log.Printf("Using cached response for call to %s(%s)", info.FullMethod, req)
+			return value, nil
+		}
+
+		resp, err := handler(ctx, req)
+		if err != nil {
+			log.Printf("Failed to call upstream %s", info.FullMethod)
+			return nil, err
+		}
+
+		return resp, nil
+	}
+}
+
+// CreateUnaryClientInterceptor creates the actual grpc.UnaryClientInterceptor
+func (interceptor *InmemoryCachingInterceptor) CreateUnaryClientInterceptor() grpc.UnaryClientInterceptor {
+	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
+		reqMessage := req.(proto.Message)
+		hash := hashcode.Strings([]string{method, reqMessage.String()})
+
+		var header metadata.MD
+		opts = append(opts, grpc.Header(&header))
+		err := invoker(ctx, method, req, reply, cc, opts...)
+		if err != nil {
+			log.Printf("Error calling upstream: %v", err)
+			return err
+		}
+
+		expiration, err := cacheExpiration(header.Get("cache-control"))
+		if expiration > 0 {
+			interceptor.Cache.Set(hash, reply, time.Duration(expiration)*time.Second)
+			log.Printf("Storing response for %d seconds", expiration)
+		}
+
+		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
+		log.Printf("Fetched upstream response for call to %s(%s)", method, req)
+		return nil
+	}
+}
+
+func cacheExpiration(cacheHeaders []string) (int, error) {
+	for _, header := range cacheHeaders {
+		for _, value := range strings.Split(header, ",") {
+			value = strings.Trim(value, " ")
+			if strings.HasPrefix(value, "max-age") {
+				duration := strings.Split(value, "max-age=")[1]
+				return strconv.Atoi(duration)
+			}
+		}
+	}
+	return -1, status.Errorf(codes.Internal, "No cache expiration set for the given object")
+}
 
 func main() {
 	port, err := strconv.Atoi(os.Getenv("PROXY_LISTEN_PORT"))
@@ -46,7 +125,9 @@ func main() {
 		log.Fatalf("Failed to register ocgrpc client views: %v", err)
 	}
 
-	grpcServer := grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}))
+	cachingInterceptor := InmemoryCachingInterceptor{Cache: *cache.New(10*time.Second, 60*time.Second)}
+
+	grpcServer := grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}), grpc.UnaryInterceptor(cachingInterceptor.CreateUnaryServerInterceptor()))
 
 	serviceAddrKeys := []string{productCatalogServiceAddrKey, currencyServiceAddrKey,
 		cartServiceAddrKey, recommendationServiceAddrKey, shippingServiceAddrKey,
@@ -58,7 +139,7 @@ func main() {
 			continue
 		}
 
-		conn, err := grpc.Dial(upstreamAddr, grpc.WithInsecure(), grpc.WithStatsHandler(new(ocgrpc.ClientHandler)))
+		conn, err := grpc.Dial(upstreamAddr, grpc.WithUnaryInterceptor(cachingInterceptor.CreateUnaryClientInterceptor()), grpc.WithInsecure(), grpc.WithStatsHandler(new(ocgrpc.ClientHandler)))
 		if err != nil {
 			log.Fatalf("Cannot connect to upstream %s : %v", serviceAddrKey, err)
 		}
@@ -67,55 +148,55 @@ func main() {
 		switch serviceAddrKey {
 		case productCatalogServiceAddrKey:
 			{
-				proxy := pb.ProductCatalogServiceCachingProxy{Client: pb.NewProductCatalogServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.ProductCatalogServiceProxy{Client: pb.NewProductCatalogServiceClient(conn)}
 				pb.RegisterProductCatalogServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Product Catalog Service calls to %s", upstreamAddr)
 			}
 		case currencyServiceAddrKey:
 			{
-				proxy := pb.CurrencyServiceCachingProxy{Client: pb.NewCurrencyServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.CurrencyServiceProxy{Client: pb.NewCurrencyServiceClient(conn)}
 				pb.RegisterCurrencyServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Currency Service calls to %s", upstreamAddr)
 			}
 		case cartServiceAddrKey:
 			{
-				proxy := pb.CartServiceCachingProxy{Client: pb.NewCartServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.CartServiceProxy{Client: pb.NewCartServiceClient(conn)}
 				pb.RegisterCartServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Cart Service calls to %s", upstreamAddr)
 			}
 		case recommendationServiceAddrKey:
 			{
-				proxy := pb.RecommendationServiceCachingProxy{Client: pb.NewRecommendationServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.RecommendationServiceProxy{Client: pb.NewRecommendationServiceClient(conn)}
 				pb.RegisterRecommendationServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Recommendation Service calls to %s", upstreamAddr)
 			}
 		case shippingServiceAddrKey:
 			{
-				proxy := pb.ShippingServiceCachingProxy{Client: pb.NewShippingServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.ShippingServiceProxy{Client: pb.NewShippingServiceClient(conn)}
 				pb.RegisterShippingServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Shipping Service calls to %s", upstreamAddr)
 			}
 		case checkoutServiceAddrKey:
 			{
-				proxy := pb.CheckoutServiceCachingProxy{Client: pb.NewCheckoutServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.CheckoutServiceProxy{Client: pb.NewCheckoutServiceClient(conn)}
 				pb.RegisterCheckoutServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Checkout Service calls to %s", upstreamAddr)
 			}
 		case adServiceAddrKey:
 			{
-				proxy := pb.AdServiceCachingProxy{Client: pb.NewAdServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.AdServiceProxy{Client: pb.NewAdServiceClient(conn)}
 				pb.RegisterAdServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Ad Service calls to %s", upstreamAddr)
 			}
 		case paymentSerivceAddrKey:
 			{
-				proxy := pb.PaymentServiceCachingProxy{Client: pb.NewPaymentServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.PaymentServiceProxy{Client: pb.NewPaymentServiceClient(conn)}
 				pb.RegisterPaymentServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Payment Service calls to %s", upstreamAddr)
 			}
 		case emailServiceAddrKey:
 			{
-				proxy := pb.EmailServiceCachingProxy{Client: pb.NewEmailServiceClient(conn), Cache: *cache.New(10*time.Second, 60*time.Second)}
+				proxy := pb.EmailServiceProxy{Client: pb.NewEmailServiceClient(conn)}
 				pb.RegisterEmailServiceServer(grpcServer, &proxy)
 				log.Printf("Proxying Email Service calls to %s", upstreamAddr)
 			}
