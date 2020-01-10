@@ -3,7 +3,7 @@ FROM golang:latest AS build-env
 ENV CGO_ENABLED 0
 ADD . /go/src/github.com/llarsson/caching-grpc-reverse-proxy
 WORKDIR /go/src/github.com/llarsson/caching-grpc-reverse-proxy
-RUN go get ./... && go build -o /caching-grpc-reverse-proxy
+RUN go build -mod=vendor -o /caching-grpc-reverse-proxy
 # Multi-stage!
 FROM alpine
 WORKDIR /
