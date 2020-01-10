@@ -1,25 +1,19 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
-	"github.com/hashicorp/terraform/helper/hashcode"
 	pb "github.com/llarsson/caching-grpc-reverse-proxy/hipstershop"
-	"github.com/llarsson/protobuf/proto"
+	interceptors "github.com/llarsson/grpc-caching-interceptors/client"
 	"github.com/patrickmn/go-cache"
 	"go.opencensus.io/plugin/ocgrpc"
 	"go.opencensus.io/stats/view"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/metadata"
-	"google.golang.org/grpc/status"
 )
 
 const (
@@ -33,78 +27,6 @@ const (
 	paymentSerivceAddrKey        = "PAYMENT_SERVICE_ADDR"
 	emailServiceAddrKey          = "EMAIL_SERVICE_ADDR"
 )
-
-// A CachingInterceptor will intercept
-type CachingInterceptor interface {
-	CreateUnaryServerInterceptor() grpc.UnaryServerInterceptor
-	CreateUnaryClientInterceptor() grpc.UnaryClientInterceptor
-}
-
-// InmemoryCachingInterceptor is the
-type InmemoryCachingInterceptor struct {
-	Cache cache.Cache
-}
-
-// CreateUnaryServerInterceptor creates the actual grpc.UnaryClientInterceptor
-func (interceptor *InmemoryCachingInterceptor) CreateUnaryServerInterceptor() grpc.UnaryServerInterceptor {
-	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
-		reqMessage := req.(proto.Message)
-		hash := hashcode.Strings([]string{info.FullMethod, reqMessage.String()})
-
-		if value, found := interceptor.Cache.Get(hash); found {
-			grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
-			log.Printf("Using cached response for call to %s(%s)", info.FullMethod, req)
-			return value, nil
-		}
-
-		resp, err := handler(ctx, req)
-		if err != nil {
-			log.Printf("Failed to call upstream %s", info.FullMethod)
-			return nil, err
-		}
-
-		return resp, nil
-	}
-}
-
-// CreateUnaryClientInterceptor creates the actual grpc.UnaryClientInterceptor
-func (interceptor *InmemoryCachingInterceptor) CreateUnaryClientInterceptor() grpc.UnaryClientInterceptor {
-	return func(ctx context.Context, method string, req, reply interface{}, cc *grpc.ClientConn, invoker grpc.UnaryInvoker, opts ...grpc.CallOption) error {
-		reqMessage := req.(proto.Message)
-		hash := hashcode.Strings([]string{method, reqMessage.String()})
-
-		var header metadata.MD
-		opts = append(opts, grpc.Header(&header))
-		err := invoker(ctx, method, req, reply, cc, opts...)
-		if err != nil {
-			log.Printf("Error calling upstream: %v", err)
-			return err
-		}
-
-		expiration, err := cacheExpiration(header.Get("cache-control"))
-		if expiration > 0 {
-			interceptor.Cache.Set(hash, reply, time.Duration(expiration)*time.Second)
-			log.Printf("Storing response for %d seconds", expiration)
-		}
-
-		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
-		log.Printf("Fetched upstream response for call to %s(%s)", method, req)
-		return nil
-	}
-}
-
-func cacheExpiration(cacheHeaders []string) (int, error) {
-	for _, header := range cacheHeaders {
-		for _, value := range strings.Split(header, ",") {
-			value = strings.Trim(value, " ")
-			if strings.HasPrefix(value, "max-age") {
-				duration := strings.Split(value, "max-age=")[1]
-				return strconv.Atoi(duration)
-			}
-		}
-	}
-	return -1, status.Errorf(codes.Internal, "No cache expiration set for the given object")
-}
 
 func main() {
 	port, err := strconv.Atoi(os.Getenv("PROXY_LISTEN_PORT"))
@@ -125,9 +47,9 @@ func main() {
 		log.Fatalf("Failed to register ocgrpc client views: %v", err)
 	}
 
-	cachingInterceptor := InmemoryCachingInterceptor{Cache: *cache.New(10*time.Second, 60*time.Second)}
+	cachingInterceptor := interceptors.InmemoryCachingInterceptor{Cache: *cache.New(10*time.Second, 60*time.Second)}
 
-	grpcServer := grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}), grpc.UnaryInterceptor(cachingInterceptor.CreateUnaryServerInterceptor()))
+	grpcServer := grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}), grpc.UnaryInterceptor(cachingInterceptor.UnaryServerInterceptor()))
 
 	serviceAddrKeys := []string{productCatalogServiceAddrKey, currencyServiceAddrKey,
 		cartServiceAddrKey, recommendationServiceAddrKey, shippingServiceAddrKey,
@@ -139,7 +61,7 @@ func main() {
 			continue
 		}
 
-		conn, err := grpc.Dial(upstreamAddr, grpc.WithUnaryInterceptor(cachingInterceptor.CreateUnaryClientInterceptor()), grpc.WithInsecure(), grpc.WithStatsHandler(new(ocgrpc.ClientHandler)))
+		conn, err := grpc.Dial(upstreamAddr, grpc.WithUnaryInterceptor(cachingInterceptor.UnaryClientInterceptor()), grpc.WithInsecure(), grpc.WithStatsHandler(new(ocgrpc.ClientHandler)))
 		if err != nil {
 			log.Fatalf("Cannot connect to upstream %s : %v", serviceAddrKey, err)
 		}
