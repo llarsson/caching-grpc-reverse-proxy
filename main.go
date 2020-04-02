@@ -26,6 +26,7 @@ const (
 	adServiceAddrKey             = "AD_SERVICE_ADDR"
 	paymentSerivceAddrKey        = "PAYMENT_SERVICE_ADDR"
 	emailServiceAddrKey          = "EMAIL_SERVICE_ADDR"
+	csvFileName     = "data.csv"
 )
 
 func main() {
@@ -49,7 +50,13 @@ func main() {
 
 	cachingInterceptor := interceptors.InmemoryCachingInterceptor{Cache: *cache.New(10*time.Second, 60*time.Second)}
 
-	grpcServer := grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}), grpc.UnaryInterceptor(cachingInterceptor.UnaryServerInterceptor()))
+	csvFile, err := os.Create(csvFileName)
+	if err != nil {
+		log.Fatalf("Could not open CSV file (%s) for writing", csvFileName)
+	}
+	defer csvFile.Close()
+
+	grpcServer := grpc.NewServer(grpc.StatsHandler(&ocgrpc.ServerHandler{}), grpc.UnaryInterceptor(cachingInterceptor.UnaryServerInterceptor(log.New(csvFile, "", 0))))
 
 	serviceAddrKeys := []string{productCatalogServiceAddrKey, currencyServiceAddrKey,
 		cartServiceAddrKey, recommendationServiceAddrKey, shippingServiceAddrKey,
