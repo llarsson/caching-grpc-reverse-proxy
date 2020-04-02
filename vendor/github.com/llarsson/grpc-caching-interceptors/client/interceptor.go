@@ -4,6 +4,7 @@ package client
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"strconv"
 	"strings"
@@ -40,7 +41,9 @@ type InmemoryCachingInterceptor struct {
 // response is already in cache, and if so, it just responds with it. If
 // no such response is found, the call is allowed to continue as usual,
 // via a client call (which should be intercepted also).
-func (interceptor *InmemoryCachingInterceptor) UnaryServerInterceptor() grpc.UnaryServerInterceptor {
+func (interceptor *InmemoryCachingInterceptor) UnaryServerInterceptor(csvLog *log.Logger) grpc.UnaryServerInterceptor {
+	csvLog.Printf("timestamp,source,method,response\n")
+
 	return func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
 		reqMessage := req.(proto.Message)
 		hash := hashcode.Strings([]string{info.FullMethod, reqMessage.String()})
@@ -48,14 +51,17 @@ func (interceptor *InmemoryCachingInterceptor) UnaryServerInterceptor() grpc.Una
 		if value, found := interceptor.Cache.Get(hash); found {
 			grpc.SendHeader(ctx, metadata.Pairs("x-cache", "hit"))
 			log.Printf("Using cached response for call to %s(%s)", info.FullMethod, req)
+			csvLog.Printf("%d,cache,%s(%s),%s\n", time.Now().UnixNano(), info.FullMethod, reqMessage, value)
 			return value, nil
 		}
 
 		resp, err := handler(ctx, req)
 		if err != nil {
-			log.Printf("Failed to call upstream %s", info.FullMethod)
+			log.Printf("Failed to call upstream %s(%s): %v", info.FullMethod, req, err)
 			return nil, err
 		}
+
+		csvLog.Printf("%d,upstream,%s(%s),%s\n", time.Now().UnixNano(), info.FullMethod, reqMessage, resp)
 
 		return resp, nil
 	}
@@ -79,14 +85,16 @@ func (interceptor *InmemoryCachingInterceptor) UnaryClientInterceptor() grpc.Una
 			return err
 		}
 
+		cacheStatus := "response not stored"
+
 		expiration, _ := cacheExpiration(header.Get("cache-control"))
 		if expiration > 0 {
 			interceptor.Cache.Set(hash, reply, time.Duration(expiration)*time.Second)
-			log.Printf("Storing response for %d seconds", expiration)
+			cacheStatus = fmt.Sprintf("response stored %d seconds", expiration)
 		}
 
 		grpc.SendHeader(ctx, metadata.Pairs("x-cache", "miss"))
-		log.Printf("Fetched upstream response for call to %s(%s)", method, req)
+		log.Printf("Fetched upstream response for call to %s(%s) (%s)", method, req, cacheStatus)
 		return nil
 	}
 }

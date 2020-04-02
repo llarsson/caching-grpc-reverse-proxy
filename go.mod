@@ -10,3 +10,5 @@ require (
 	go.opencensus.io v0.22.2
 	google.golang.org/grpc v1.26.0
 )
+
+replace github.com/llarsson/grpc-caching-interceptors => ../grpc-caching-interceptors
